@@ -1,25 +1,45 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:bloc/bloc.dart';
-import 'dart:math' as math show Random;
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'dart:developer' as devtools show log;
 
-const names = [
-  'Foo',
-  'Bar',
-  'Baz',
-];
-
-extension RandomElement<T> on Iterable<T> {
-  T getRandomElement() => elementAt(math.Random().nextInt(length));
-}
-
-class NamesCubit extends Cubit<String?> {
-  NamesCubit() : super(null);
-
-  void pickRandomName() => emit(names.getRandomElement());
+extension Log on Object {
+  void log() => devtools.log(toString());
 }
 
 void main() {
   runApp(const MyApp());
+}
+
+@immutable
+abstract class LoadAction {
+  const LoadAction();
+}
+
+@immutable
+class LoadPersonAction implements LoadAction {
+  final PersonUrl url;
+
+  LoadPersonAction({required this.url}) : super();
+}
+
+enum PersonUrl {
+  persons1,
+  persons2,
+}
+
+extension UrlString on PersonUrl {
+  String get urlString {
+    switch (this) {
+      case PersonUrl.persons1:
+        return "http://127.0.0.1:5500/api/persons1.json";
+      case PersonUrl.persons2:
+        return "http://127.0.0.1:5500/api/persons2.json";
+    }
+  }
 }
 
 class MyApp extends StatelessWidget {
@@ -31,120 +51,143 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'Flutter Demo',
       theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
       ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      home: BlocProvider(
+        create: (_) => PersonsBloc(),
+        child: MyHomePage(),
+      ),
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
+@immutable
+class Person {
+  final String name;
+  final int age;
 
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
+  const Person({
+    required this.name,
+    required this.age,
+  });
 
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
-
-  @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  Person.fromJson(Map<String, dynamic> json)
+      : name = json['name'] as String,
+        age = json['age'] as int;
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  late final NamesCubit cubit;
-  int _counter = 0;
+//httpClient from dart io package for handling http requests
+
+Future<Iterable<Person>> getPersons(String url) => HttpClient()
+    .getUrl(Uri.parse(url))
+    .then((req) => req.close())
+    .then((res) => res.transform(utf8.decoder).join())
+    .then((str) => json.decode(str) as List<dynamic>)
+    .then((list) => list.map((e) => Person.fromJson(e)));
+
+@immutable
+class FetchResult {
+  final Iterable<Person> persons;
+
+  final bool isRetrievedFromCache;
+
+  const FetchResult({
+    required this.persons,
+    required this.isRetrievedFromCache,
+  });
 
   @override
-  void initState() {
-    // TODO: implement initState
-    super.initState();
+  String toString() =>
+      'FetchRequest (isRetrievedFromCache = $isRetrievedFromCache, persons = $persons)';
+}
 
-    cubit = NamesCubit();
+class PersonsBloc extends Bloc<LoadAction, FetchResult?> {
+  final Map<PersonUrl, Iterable<Person>> _cache = {};
+  PersonsBloc() : super(null) {
+    on<LoadPersonAction>(
+      (event, emit) async {
+        final url = event.url;
+
+        if (_cache.containsKey(url)) {
+          final cachedPersons = _cache[url]!;
+          final result = FetchResult(
+            persons: cachedPersons,
+            isRetrievedFromCache: true,
+          );
+          emit(result);
+        } else {
+          final persons = await getPersons(url.urlString);
+          _cache[url] = persons;
+          final result = FetchResult(
+            persons: persons,
+            isRetrievedFromCache: false,
+          );
+          emit(result);
+        }
+      },
+    );
   }
+}
 
-  @override
-  void dispose() {
-    // TODO: implement dispose
-    super.dispose();
-    cubit.close();
-  }
-
-  void _incrementCounter() {
-    setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
-    });
-  }
-
-  @override
+class MyHomePage extends StatelessWidget {
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
+    // TODO: implement build
     return Scaffold(
       appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
+        title: const Text('Home Page'),
       ),
-      body: StreamBuilder<String?>(
-        stream: cubit.stream,
-        builder: (context, snapshot) {
-          final button = TextButton(
-            onPressed: () => cubit.pickRandomName(),
-            child: Text('pick a random name'),
-          );
+      body: Column(
+        children: [
+          Row(
+            children: [
+              TextButton(
+                onPressed: () {
+                  context
+                      .read<PersonsBloc>()
+                      .add(LoadPersonAction(url: PersonUrl.persons1));
+                },
+                child: const Text('Load json #1'),
+              ),
+              TextButton(
+                onPressed: () {
+                  context
+                      .read<PersonsBloc>()
+                      .add(LoadPersonAction(url: PersonUrl.persons2));
+                },
+                child: const Text('Load json #2'),
+              ),
+            ],
+          ),
+          BlocBuilder<PersonsBloc, FetchResult?>(
+            buildWhen: (prevous, current) {
+              return prevous?.persons != current?.persons;
+            },
+            builder: ((context, state) {
+              final persons = state?.persons;
 
-          switch (snapshot.connectionState) {
-            case ConnectionState.none:
-              return button;
-            case ConnectionState.waiting:
-              return button;
-            case ConnectionState.active:
-              return Column(
-                children: [
-                  Text(snapshot.data ?? '')
-                  ,
-                  button
-                ],
+              if (persons == null) {
+                return const SizedBox();
+              }
+
+              return ListView.builder(
+                itemCount: persons.length,
+                itemBuilder: (context, index) {
+                  final person = persons[index]!;
+
+                  return ListTile(
+                    title: Text(person.name),
+                  );
+                },
               );
-            case ConnectionState.done:
-              return const SizedBox();
-          }
-        },
+            }),
+          )
+        ],
       ),
     );
   }
+}
+
+extension Subscript<T> on Iterable<T> {
+  T? operator [](int index) => length > index ? elementAt(index) : null;
 }
