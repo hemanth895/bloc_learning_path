@@ -13,6 +13,7 @@ class AppBloc extends Bloc<AppAction, AppState> {
     required this.loginApi,
     required this.notesApi,
   }) : super(const AppState.empty()) {
+    
     on<LoginAction>((event, emit) async {
       emit(
         const AppState(

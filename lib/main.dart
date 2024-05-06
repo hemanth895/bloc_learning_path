@@ -68,6 +68,8 @@ class MyHomePage extends StatelessWidget {
             }
 
             final loginError = state.loginError;
+
+            
             if (loginError != null) {
               showGenericDialog(
                 context: context,

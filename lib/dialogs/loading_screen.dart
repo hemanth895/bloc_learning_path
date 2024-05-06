@@ -1,9 +1,9 @@
 import 'dart:async';
-
 import 'package:bloc_learning_path/dialogs/loading_screen_controller.dart';
 import 'package:flutter/material.dart';
 
 class LoadingScreen {
+
   LoadingScreen._sharedInstance();
   static final LoadingScreen _shared = LoadingScreen._sharedInstance();
   factory LoadingScreen.instance() => _shared;
